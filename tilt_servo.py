@@ -65,6 +65,9 @@ class Get_UAV_Data(object):  #Just to get UAV data
          self.pwm2 = GPIO.PWM(tilt_2_pin,50)
          self.pwm3 = GPIO.PWM(tilt_3_pin,50)
          self.pwm4 = GPIO.PWM(tilt_4_pin,50)
+        
+         self.currentpwm1 = 75
+         self.currentpwm2 = 75
 
          print('PWM signal pins configured')
          # Initilize the states
@@ -170,13 +173,47 @@ class Get_UAV_Data(object):  #Just to get UAV data
     def tilt_control(self):
         e_x = self.x_des - self.x_pos
         e_y = self.y_des - self.y_pos
+        
+        #Dummy test code
+        if(e_x > 0):
+            setAngleForServo1(90)
+        elif(e_x < 0):
+            setAngleForServo1(60)
+            
+        if(e_y > 0):
+            setAngleForServo2(90)
+        elif(e_y < 0):
+            setAngleForServo2(60)
+            
+        if(e_x == 0):
+            setAngleForServo1(75)
+            
+        if(e_y == 0):
+            setAngleForServo2(75)
 
         print('Error in x-direction %f', %e_x)
         print('Error in y-direction %f', %e_y)
 
 
+    def setAngleForServo1(angle):
+        duty = (angle / 15) + 2
+        GPIO.output(servoPIN, True)
+        self.pwm1.ChangeDutyCycle(duty)
+        self.currentpwm1 = angle
+        sleep(1)
+        GPIO.output(servoPIN, False)
+        self.pwm1.ChangeDutyCycle(duty)
+        
+    def setAngleForServo2(angle):
+        duty = (angle / 15) + 2
+        GPIO.output(servoPIN, True)
+        self.pwm2.ChangeDutyCycle(duty)
+        self.currentpwm2 = angle
+        sleep(1)
+        GPIO.output(servoPIN, False)
+        self.pwm2.ChangeDutyCycle(duty)
 
-
+    
 # ############### Publisher Functions #####################
 #
 # def uav_ten(states_ten):
