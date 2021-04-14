@@ -27,26 +27,26 @@ class Get_UAV_Data(object):  #Just to get UAV data
          self.velocities_feedback_subscriber=rospy.Subscriber('mavros/local_position/velocity_body', TwistStamped, self.callback_velocities)
 
          # Controller gains
-         self.kpx = 0
+         self.kpx = 2
          self.kix = 0
-         self.kdx = 0
+         self.kdx = 0.001
 
-         self.kpy = 0
+         self.kpy = 2
          self.kiy = 0
-         self.kdy = 0
+         self.kdy = 0.001
 
-         self.kpphi = 0
+         self.kpphi = 2
          self.kiphi = 0
-         self.kdphi = 0
+         self.kdphi = 0.1
 
-         self.kptheta = 0
+         self.kptheta = 2
          self.kitheta = 0
-         self.kdtheta = 0
+         self.kdtheta = 0.1
 
-         self.kppsi = 0
+         self.kppsi = 2
          self.kipdi = 0
-         self.kdpsi = 0
-         print('Controller gains defined')
+         self.kdpsi = 0.1
+         # print('Controller gains defined')
 
 
          # Specifying the schematic of the sero motors for the tilt-rotor drone and initialization
@@ -56,30 +56,40 @@ class Get_UAV_Data(object):  #Just to get UAV data
          self.tilt_3_pin = 15
          self.tilt_4_pin = 16
 
-         GPIO.setup(tilt_1_pin,GPIO.OUT)
-         GPIO.setup(tilt_2_pin,GPIO.OUT)
-         GPIO.setup(tilt_3_pin,GPIO.OUT)
-         GPIO.setup(tilt_4_pin,GPIO.OUT)
+         GPIO.setup(self.tilt_1_pin,GPIO.OUT)
+         GPIO.setup(self.tilt_2_pin,GPIO.OUT)
+         GPIO.setup(self.tilt_3_pin,GPIO.OUT)
+         GPIO.setup(self.tilt_4_pin,GPIO.OUT)
 
-         self.pwm1 = GPIO.PWM(tilt_1_pin,50)
-         self.pwm2 = GPIO.PWM(tilt_2_pin,50)
-         self.pwm3 = GPIO.PWM(tilt_3_pin,50)
-         self.pwm4 = GPIO.PWM(tilt_4_pin,50)
-        
-         self.currentpwm1 = 75
-         self.currentpwm2 = 75
+         self.pwm1 = GPIO.PWM(self.tilt_1_pin,50)
+         self.pwm2 = GPIO.PWM(self.tilt_2_pin,50)
+         self.pwm3 = GPIO.PWM(self.tilt_3_pin,50)
+         self.pwm4 = GPIO.PWM(self.tilt_4_pin,50)
 
-         print('PWM signal pins configured')
+         self.pwm1.start(7)
+         self.pwm2.start(7)
+         self.pwm3.start(7)
+         self.pwm4.start(7)
+
+         # print('PWM signal pins configured')
          # Initilize the states
          self.q0 = 1
          self.q1 = 0
          self.q2 = 0
          self.q3 = 0
 
+         self.phi = 0
+         self.theta = 0
+         self.psi = 0
+
          self.q0_des = 1
          self.q1_des = 0
          self.q2_des = 0
          self.q3_des = 0
+
+         self.phi_des = 0
+         self.theta_des = 0
+         self.psi_des = 0
 
          self.x_pos = 0
          self.y_pos = 0
@@ -103,12 +113,11 @@ class Get_UAV_Data(object):  #Just to get UAV data
         roll is rotation around x in radians (counterclockwise)
         pitch is rotation around y in radians (counterclockwise)
         yaw is rotation around z in radians (counterclockwise)
-
         """
-        self.x = q1
-        self.y = q2
-        self.z = q3
-        self.w = q0
+        x = q1
+        y = q2
+        z = q3
+        w = q0
 
         t0 = +2.0 * (w * x + y * z)
         t1 = +1.0 - 2.0 * (x * x + y * y)
@@ -171,49 +180,90 @@ class Get_UAV_Data(object):  #Just to get UAV data
         # print('I received linear and angular velocities')
 
     def tilt_control(self):
+
+        # Position Control using tilt
         e_x = self.x_des - self.x_pos
         e_y = self.y_des - self.y_pos
-        
-        #Dummy test code
-        if(e_x > 0):
-            setAngleForServo1(90)
-        elif(e_x < 0):
-            setAngleForServo1(60)
-            
-        if(e_y > 0):
-            setAngleForServo2(90)
-        elif(e_y < 0):
-            setAngleForServo2(60)
-            
-        if(e_x == 0):
-            setAngleForServo1(75)
-            
-        if(e_y == 0):
-            setAngleForServo2(75)
 
-        print('Error in x-direction %f', %e_x)
-        print('Error in y-direction %f', %e_y)
+        del_x_tilt = self.kpx*e_x - self.kdx*self.x_vel
+        del_y_tilt = self.kpx*e_y - self.kdx*self.y_vel
+
+        # Attitude control using tilt
+        self.phi_des, self.theta_des, self.psi_des = self.euler_from_quat(self.q1_des, self.q2_des,self.q3_des,self.q0_des)
+        self.phi, self.theta, self.psi = self.euler_from_quat(self.q1, self.q2,self.q3,self.q0)
+
+        e_phi = self.phi_des - self.phi
+        e_theta = self.theta_des - self.theta
+        e_psi = self.psi_des - self.psi
+
+        del_phi_tilt = self.kpphi*e_phi - self.kdphi*self.p_rt
+        del_theta_tilt = self.kptheta*e_theta - self.kdtheta*self.q_rt
+        del_psi_tilt = self.kppsi*e_psi - self.kdpsi*self.r_rt
+
+        # print('del_x_tilt: ', del_x_tilt)
+        # print('del_y_tilt: ', del_y_tilt)
+        # print('del_phi_tilt: ', del_phi_tilt)
+        # print('del_theta_tilt: ', del_theta_tilt)
+        # print('del_psi_tilt: ', del_psi_tilt)
+
+        del_tilt_1 = - del_y_tilt - del_psi_tilt + del_theta_tilt
+        del_tilt_2 = del_x_tilt - del_psi_tilt + del_phi_tilt
+        del_tilt_3 = - del_y_tilt + del_psi_tilt + del_theta_tilt
+        del_tilt_4 =  del_x_tilt + del_psi_tilt + del_phi_tilt
+
+        # dc_1 = (1.0/15.0)*del_tilt_1 + 7
+        # dc_2 = (1.0/15.0)*del_tilt_2 + 7
+        # dc_3 = (1.0/15.0)*del_tilt_3 + 7
+        # dc_4 = (1.0/15.0)*del_tilt_4 + 7
+
+        dc_1 = 0.2*del_tilt_1 + 7
+        dc_2 = 0.2*del_tilt_2 + 7
+        dc_3 = 0.2*del_tilt_3 + 7
+        dc_4 = 0.2*del_tilt_4 + 7
 
 
-    def setAngleForServo1(angle):
-        duty = (angle / 15) + 2
-        GPIO.output(servoPIN, True)
-        self.pwm1.ChangeDutyCycle(duty)
-        self.currentpwm1 = angle
-        sleep(1)
-        GPIO.output(servoPIN, False)
-        self.pwm1.ChangeDutyCycle(duty)
-        
-    def setAngleForServo2(angle):
-        duty = (angle / 15) + 2
-        GPIO.output(servoPIN, True)
-        self.pwm2.ChangeDutyCycle(duty)
-        self.currentpwm2 = angle
-        sleep(1)
-        GPIO.output(servoPIN, False)
-        self.pwm2.ChangeDutyCycle(duty)
+        if dc_1 < 5:
+            dc_1 = 5
+        if dc_1 > 9:
+            dc_1 = 9
 
-    
+        if dc_2 < 5:
+            dc_2 = 5
+        if dc_2 > 9:
+            dc_2 = 9
+
+        if dc_3 < 5:
+            dc_3 = 5
+        if dc_3 > 9:
+            dc_3 = 9
+
+        if dc_4 < 5:
+            dc_4 = 5
+        if dc_4 > 9:
+            dc_4 = 9
+
+
+
+        print('dc_1: ', dc_1)
+        print('dc_2: ', dc_2)
+        print('dc_3: ', dc_3)
+        print('dc_4: ', dc_4)
+
+        self.pwm1.ChangeDutyCycle(dc_1)
+        self.pwm2.ChangeDutyCycle(dc_2)
+        self.pwm3.ChangeDutyCycle(dc_3)
+        self.pwm4.ChangeDutyCycle(dc_4)
+
+
+
+
+
+        # print('Error in x-direction: ', e_x)
+        # print('Error in y-direction: ', e_y)
+
+
+
+
 # ############### Publisher Functions #####################
 #
 # def uav_ten(states_ten):
@@ -235,10 +285,11 @@ if __name__=='__main__':
     rospy.init_node('tilt_servo_control')
     uav_data = Get_UAV_Data()
 
-    rate = rospy.rate(50) # 10hz
+    rate = rospy.Rate(50) # 10hz
 
 
     while not rospy.is_shutdown():
+
         uav_data.tilt_control()
 
         #print('Executing main while loop')
